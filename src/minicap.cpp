@@ -188,13 +188,43 @@ int main(int argc, char **argv) {
     int socket;
 
     unsigned char frameSize[4];
+    unsigned char *frameData = nullptr;
+    int length = 0;
     while (gWaiter.isRunning() and (socket = server.accept()) > 0) {
         std::cout << "New client connection" << std::endl;
 
         send(socket, banner.getData(), banner.getSize(), 0);
 
         client.start();
+        
         while (gWaiter.isRunning() and gWaiter.waitForFrame() > 0) {
+#if 1
+            
+            client.lockFrame(&frame);
+            int width = frame.width;
+            int height = frame.height;
+            int bytesPerRow = frame.bytesPerRow;
+            if(length!=bytesPerRow*height)
+            {
+                length=bytesPerRow*height;
+                if(frameData!=nullptr)
+                    delete[] frameData;
+                frameData = new unsigned char[length];
+            }
+            memcpy(frameData, frame.data, length);
+            client.releaseFrame(&frame);
+            unsigned char frameSize2[4*3];
+            putUInt32LE(frameSize2 + 0, width);
+            putUInt32LE(frameSize2 + 4, height);
+            putUInt32LE(frameSize2 + 8, bytesPerRow);
+            if ( pumps(socket, frameSize2, 4*3) < 0 ) {
+                break;
+            }
+            if ( pumps(socket,frameData, length) < 0 ) {
+                break;
+            }
+            
+#else
             client.lockFrame(&frame);
             encoder.encode(&frame);
             client.releaseFrame(&frame);
@@ -205,6 +235,7 @@ int main(int argc, char **argv) {
             if ( pumps(socket, encoder.getEncodedData(), encoder.getEncodedSize()) < 0 ) {
                 break;
             }
+#endif
         }
         client.stop();
     }
